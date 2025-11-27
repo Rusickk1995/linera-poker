@@ -26,23 +26,15 @@ opt-level = "z"
 strip = "debuginfo"
 
 
-[[bin]]
-name = "poker_dev_cli"
-path = "src/bin/poker_dev_cli.rs"
+# [[bin]]
+# name = "poker_dev_cli"
+# path = "src/bin/poker_dev_cli.rs"
 
-[[bin]]
-name = "poker_dev_cli_single_table"
-path = "src/bin/poker_dev_cli_single_table.rs"
+# [[bin]]
+# name = "poker_dev_cli_single_table"
+# path = "src/bin/poker_dev_cli_single_table.rs"
 
-[[bin]]
-name = "poker_dev_cli_multitable"
-path = "src/bin/poker_dev_cli_multitable.rs"
+# [[bin]]
+# name = "poker_dev_cli_multitable"
+# path = "src/bin/poker_dev_cli_multitable.rs"
 
-[[bin]]
-name = "poker_tournament_lobby_cli"
-path = "src/bin/poker_tournament_lobby_cli.rs"
-
-
-[[bin]]
-name = "poker_tournament_runtime_cli"
-path = "src/bin/poker_tournament_runtime_cli.rs"

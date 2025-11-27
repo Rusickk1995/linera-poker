@@ -229,7 +229,10 @@ fn add_contribution(engine: &mut HandEngine, seat: SeatIndex, amount: Chips) {
         return;
     }
     engine.pot.add(amount);
-    *engine.contributions.entry(seat).or_insert(Chips::ZERO) += amount;
+    *engine
+        .contributions
+        .entry(seat)
+        .or_insert(Chips::ZERO) += amount;
 }
 
 /// Раздача карманных карт – по 2 карты, по кругу.
@@ -688,6 +691,9 @@ fn finish_hand_without_showdown(table: &mut Table, engine: &mut HandEngine) -> H
         table_id: engine.table_id,
     });
 
+    // Обновляем статусы bust’ов по итогам раздачи.
+    update_busted_statuses_after_hand(table);
+
     table.total_pot = Chips::ZERO;
 
     HandSummary {
@@ -802,6 +808,9 @@ fn finish_hand_with_showdown(table: &mut Table, engine: &mut HandEngine) -> Hand
         table_id: engine.table_id,
     });
 
+    // Обновляем статусы bust’ов по итогам раздачи.
+    update_busted_statuses_after_hand(table);
+
     table.total_pot = Chips::ZERO;
 
     let total_pot = engine.pot.total;
@@ -842,4 +851,20 @@ fn build_results_single_winner(
     }
 
     res
+}
+
+/// Пометить игроков как Busted, если после раздачи у них стек 0.
+///
+/// Это нужно, чтобы турнирный слой (`Tournament`) или инфраструктура
+/// могли однозначно увидеть, кто вылетел с этого стола.
+fn update_busted_statuses_after_hand(table: &mut Table) {
+    for seat_opt in table.seats.iter_mut() {
+        if let Some(p) = seat_opt {
+            if p.stack.is_zero()
+                && !matches!(p.status, PlayerStatus::Busted | PlayerStatus::SittingOut)
+            {
+                p.status = PlayerStatus::Busted;
+            }
+        }
+    }
 }

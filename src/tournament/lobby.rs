@@ -32,14 +32,18 @@ impl TournamentLobby {
     ///
     /// Возвращает:
     /// - `TournamentId` созданного турнира.
-    pub fn create_tournament(&mut self, config: TournamentConfig) -> TournamentId {
+    pub fn create_tournament(
+        &mut self,
+        owner: PlayerId,
+        config: TournamentConfig,
+    ) -> Result<TournamentId, TournamentError> {
         let id = self.next_tournament_id;
         self.next_tournament_id += 1;
 
-        let tournament = Tournament::new(id, config);
-        self.tournaments.insert(id, tournament);
+        let tournament = Tournament::new(id, owner, config)?; // ← передаём owner и распаковываем Result
 
-        id
+        self.tournaments.insert(id, tournament);
+        Ok(id)
     }
 
     /// Получить турнир по id (только чтение).

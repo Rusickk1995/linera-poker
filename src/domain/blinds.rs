@@ -1,3 +1,5 @@
+// src/domain/blinds.rs
+
 use serde::{Deserialize, Serialize};
 
 use crate::domain::chips::Chips;
@@ -14,40 +16,66 @@ pub enum AnteType {
 }
 
 /// Один уровень блайндов.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// Пример: level = 3, SB = 100, BB = 200, ante = 25, ante_type = BigBlind, duration_minutes = 10.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BlindLevel {
-    /// Номер уровня (1,2,3,...).
+    /// Порядковый номер уровня (1, 2, 3, ...).
     pub level: u32,
+    /// Малый блайнд.
     pub small_blind: Chips,
+    /// Большой блайнд.
     pub big_blind: Chips,
-    /// Сумма анте (если есть).
+    /// Размер анте в фишках (0, если нет).
     pub ante: Chips,
+    /// Тип анте: None / Classic / BigBlind.
     pub ante_type: AnteType,
-    /// Длительность уровня в минутах (для турнирной структуры).
+    /// Длительность уровня в минутах.
     pub duration_minutes: u32,
 }
 
 impl BlindLevel {
     pub fn new(
         level: u32,
-        sb: Chips,
-        bb: Chips,
+        small_blind: Chips,
+        big_blind: Chips,
         ante: Chips,
         ante_type: AnteType,
         duration_minutes: u32,
     ) -> Self {
         Self {
             level,
-            small_blind: sb,
-            big_blind: bb,
+            small_blind,
+            big_blind,
             ante,
             ante_type,
             duration_minutes,
         }
     }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.small_blind.0 == 0 {
+            return Err(format!("BlindLevel {}: small_blind = 0", self.level));
+        }
+        if self.big_blind.0 == 0 {
+            return Err(format!("BlindLevel {}: big_blind = 0", self.level));
+        }
+        if self.big_blind.0 <= self.small_blind.0 {
+            return Err(format!(
+                "BlindLevel {}: big_blind ({}) <= small_blind ({})",
+                self.level, self.big_blind.0, self.small_blind.0
+            ));
+        }
+        if self.duration_minutes == 0 {
+            return Err(format!(
+                "BlindLevel {}: duration_minutes = 0",
+                self.level
+            ));
+        }
+        Ok(())
+    }
 }
 
-/// Полная структура блайндов (турнир).
+/// Структура уровней блайндов для турнира.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BlindStructure {
     pub levels: Vec<BlindLevel>,
@@ -58,60 +86,85 @@ impl BlindStructure {
         Self { levels }
     }
 
-    pub fn first_level(&self) -> Option<&BlindLevel> {
-        self.levels.first()
-    }
-
-    /// Получить уровень по его номеру (если нет – последний).
-    pub fn level_by_number(&self, level: u32) -> Option<&BlindLevel> {
-        self.levels.iter().find(|l| l.level == level)
-    }
-
-    /// Простейшая логика: считаем уровень по прошедшим минутам.
-    /// Engine может использовать это как основу и накручивать сверху более сложные правила.
-    pub fn level_for_elapsed_minutes(&self, minutes: u32) -> Option<&BlindLevel> {
+    pub fn validate(&self) -> Result<(), String> {
         if self.levels.is_empty() {
-            return None;
+            return Err("BlindStructure: empty levels".into());
         }
 
-        let mut acc = 0;
-        for level in &self.levels {
-            acc += level.duration_minutes;
-            if minutes < acc {
-                return Some(level);
+        let mut expected_level = 1u32;
+        for lvl in &self.levels {
+            lvl.validate()?;
+            if lvl.level != expected_level {
+                return Err(format!(
+                    "BlindStructure: expected level {}, got {}",
+                    expected_level, lvl.level
+                ));
             }
+            expected_level += 1;
         }
 
-        // Если время превысило все уровни – возвращаем последний (блайнды не растут дальше).
-        self.levels.last()
+        Ok(())
     }
-}
 
-impl Default for BlindStructure {
-    fn default() -> Self {
-        use crate::domain::chips::Chips;
-        use AnteType::*;
+    pub fn first_level(&self) -> &BlindLevel {
+        &self.levels[0]
+    }
 
+    pub fn level_by_number(&self, number: u32) -> Option<&BlindLevel> {
+        self.levels.iter().find(|lvl| lvl.level == number)
+    }
+
+    pub fn total_duration_minutes(&self) -> u32 {
+        self.levels
+            .iter()
+            .map(|lvl| lvl.duration_minutes)
+            .sum()
+    }
+
+    /// elasped_minutes считается от момента старта турнира (не учитывая перерывы).
+    pub fn level_for_elapsed_minutes(&self, elapsed_minutes: u32) -> &BlindLevel {
+        let mut acc = 0u32;
+        let mut current = &self.levels[0];
+
+        for lvl in &self.levels {
+            acc += lvl.duration_minutes;
+            if elapsed_minutes < acc {
+                return lvl;
+            }
+            current = lvl;
+        }
+
+        current
+    }
+
+    pub fn simple_demo_structure() -> Self {
         let levels = vec![
-            BlindLevel {
-                level: 1,
-                small_blind: Chips::new(25),
-                big_blind: Chips::new(50),
-                ante: Chips::ZERO,
-                ante_type: None,
-                duration_minutes: 10,
-            },
-            BlindLevel {
-                level: 2,
-                small_blind: Chips::new(50),
-                big_blind: Chips::new(100),
-                ante: Chips::ZERO,
-                ante_type: None,
-                duration_minutes: 10,
-            },
+            BlindLevel::new(
+                1,
+                Chips::new(25),
+                Chips::new(50),
+                Chips::ZERO,
+                AnteType::None,
+                10,
+            ),
+            BlindLevel::new(
+                2,
+                Chips::new(50),
+                Chips::new(100),
+                Chips::ZERO,
+                AnteType::None,
+                10,
+            ),
+            BlindLevel::new(
+                3,
+                Chips::new(75),
+                Chips::new(150),
+                Chips::new(25),
+                AnteType::BigBlind,
+                10,
+            ),
         ];
 
         BlindStructure { levels }
     }
 }
-
