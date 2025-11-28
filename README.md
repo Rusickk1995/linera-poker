@@ -1,158 +1,193 @@
-# **README.md — Production-Grade**
-
 ````markdown
-# Linera Poker Engine
+<p align="center">
+  <strong style="font-size: 32px;">LINERA POKER ENGINE</strong>
+</p>
 
-An industrial-grade, deterministic, high-performance Texas Hold’em engine designed for:
+<p align="center">
+  Industrial-grade, deterministic Texas Hold’em engine for Linera and high-load backends.
+</p>
 
-- on-chain smart contracts on **Linera**,
-- off-chain Rust backends,
-- poker frontends (via API / GraphQL / DTO),
-- multi-table tournaments, MTT, timebank, shot-clock, deterministic RNG.
+<p align="center">
+  <img src="https://img.shields.io/badge/language-Rust-orange.svg" alt="Language: Rust" />
+  <img src="https://img.shields.io/badge/status-active%20development-brightgreen.svg" alt="Status: Active Development" />
+  <img src="https://img.shields.io/badge/platform-Linera%20&%20Offchain-blue.svg" alt="Platform: Linera & Off-chain" />
+</p>
 
-This engine is the computational core of **Strix Poker** and is shared across
-local simulations, backend servers, and on-chain logic.
+---
 
-> Status: Active development (internal/private). API is subject to change.
+## Overview
+
+**Linera Poker Engine** is a deterministic, production-ready Texas Hold’em engine designed to run:
+
+- as core logic for **on-chain** smart contracts on Linera,
+- inside **off-chain** Rust backends and services,
+- behind modern poker frontends (API / GraphQL / DTO),
+- in large-scale multi-table tournaments with timebank and shot-clock.
+
+The same engine can power local simulations, backend infrastructure, and on-chain execution.
+
+> Status: **Active development (internal/private)** – public API may change.
 
 ---
 
 ## Table of Contents
 
-- [About](#about)
+- [Overview](#overview)
 - [Key Features](#key-features)
 - [Architecture](#architecture)
-- [Cloning & Setup](#cloning--setup)
+- [Getting Started](#getting-started)
+  - [Cloning & Setup](#cloning--setup)
+  - [Requirements](#requirements)
 - [Build](#build)
 - [Running Tests](#running-tests)
 - [Usage Examples](#usage-examples)
-  - [1. Single-Table Hand Example](#1-singletable-hand-example)
-  - [2. Tournament / MTT Example (Conceptual)](#2-tournament--mtt-example-conceptual)
+  - [Single-Table Hand Example](#singletable-hand-example)
+  - [Tournament / MTT Example (Conceptual)](#tournament--mtt-example-conceptual)
 - [Deterministic RNG & Fairness](#deterministic-rng--fairness)
 - [Timebank & Time Control](#timebank--time-control)
 - [Tournaments & Multi-Table](#tournaments--multitable)
 - [Linera Integration](#linera-integration)
 - [Roadmap](#roadmap)
+- [Project Status](#project-status)
 - [License](#license)
-
----
-
-## About
-
-**Linera Poker Engine** is a deterministic professional Texas Hold’em engine featuring:
-
-- Full hand lifecycle: preflop → flop → turn → river → showdown.
-- Cash games and tournaments (including multi-table MTT).
-- Strong domain types (cards, chips, players, tables, tournaments).
-- Blockchain-friendly deterministic RNG with hash-reseeding.
-- Full time control system: timebank, shot-clock, extra time.
-- Comprehensive test suite: unit, integration, and stress tests.
-
-The objective is to provide an **enterprise-grade poker core** suitable for
-centralized servers and decentralized on-chain execution.
 
 ---
 
 ## Key Features
 
 ### Full Poker Engine
-- Streets: Preflop, Flop, Turn, River, Showdown.
-- Actions: Fold, Check, Call, Bet, Raise, All-In.
-- Strict betting rules: `current_bet`, `min_raise`, `to_act`, `last_aggressor`.
-- Hand outcomes: `HandStatus::Ongoing` / `HandStatus::Finished(HandSummary, HandHistory)`.
 
-### Side-pots & All-in Logic
-- Supports any multi-way all-in scenario.
-- Main pot + multiple side pots with correct distribution.
-- Fully covered by edge-case tests (2–4 all-ins).
+- Streets: **Preflop → Flop → Turn → River → Showdown**.
+- Actions: `Fold`, `Check`, `Call`, `Bet`, `Raise`, `AllIn`.
+- Strict betting rules (`current_bet`, `min_raise`, `to_act`, `last_aggressor`).
+- Clear hand outcomes: `HandStatus::Ongoing` / `HandStatus::Finished(HandSummary, HandHistory)`.
+
+### Side-pots & All-in Handling
+
+- Supports arbitrary **multi-way all-in** scenarios.
+- Main pot + multiple side pots with correct chip allocation.
+- Edge cases (2–4 all-ins, equal stacks, split pots) covered by tests.
 
 ### Hand Evaluation (Eval)
-- Fast 7-card evaluator (2 hole cards + 5 board cards).
-- All hand categories (High Card → Straight Flush).
-- Precomputed lookup tables for straights, bitmasks, flush detection.
+
+- Fast **7-card evaluator** (2 hole cards + 5 community cards).
+- All standard hand categories (High Card → Straight Flush).
+- Precomputed lookup tables and bitmasks for efficient evaluation.
 
 ### Deterministic RNG
-- Engine-level `RandomSource` interface.
-- `RngSeed` + `DeterministicRng` with hash-reseeding.
-- 100% reproducible simulations and tournament replays.
+
+- Engine-level `RandomSource` trait (no global RNG).
+- `RngSeed` + `DeterministicRng` with **hash-reseeding per hand**.
+- 100% reproducible simulations and deterministic tournament runs.
 
 ### Tournament Engine
-- `Tournament`, `TournamentConfig`, blind levels.
-- Seat balancing across tables.
-- Player rebalancing (`rebalance`).
-- `TournamentLobby` and `runtime` to control entire tournament lifecycle.
+
+- `Tournament`, `TournamentConfig`, blind levels and structures.
+- Seat balancing across tables, automatic rebalancing.
+- `TournamentLobby` and `TournamentRuntime` orchestration.
 
 ### Time Control
-- Timebank, extra time, base time, increments.
-- Soft/hard timeout evaluation through `TurnClock`.
+
+- `TimeRules`, `TimeBank`, `ExtraTime`, `TurnClock`.
+- Configurable base time, increments, timebank, soft/hard timeouts.
+- Suitable for real-money, high-pressure environments.
 
 ### API Layer
-- Commands, queries, DTOs.
-- Error handling tuned for backend/frontend integration.
-- Ideal for UI, GraphQL, and on-chain wrappers.
+
+- Command and query types for external callers.
+- DTOs for UI / GraphQL / REST.
+- API-level error modeling.
 
 ---
 
 ## Architecture
 
-The project is separated into several layers:
+The repository is organized into clean, testable layers:
 
 ### `src/domain`
-Pure domain logic:
-- Cards, chips, players, tables
-- Tournaments, blind levels, IDs
-- No game logic — only data structures
+
+Domain model only, no engine logic:
+
+- Cards, ranks, suits.
+- Chips and stack representation.
+- Players, seats, tables, tournaments, blinds.
+- Strongly typed IDs (`PlayerId`, `TableId`, `TournamentId`, `HandId`, etc.).
 
 ### `src/engine`
-The core state machine:
-- `HandEngine`, `game_loop`
-- Actions, betting, pots, side-pots
-- Hand history, seat positions
-- Multi-table management
+
+Core poker engine:
+
+- `HandEngine` and full hand state machine (`game_loop`).
+- Action processing, betting rules, validation.
+- Main pot + side pots.
+- Seat positions, blinds, dealer button.
+- Hand history and event log.
+- Multi-table management helpers.
 
 ### `src/eval`
-Hand strength evaluation:
-- Categories
-- Straight masks
-- 7-card evaluation functions
+
+Hand-evaluation subsystem:
+
+- Hand categories and ranking.
+- Lookup tables and bit-level helpers.
+- Deterministic 7-card evaluation.
 
 ### `src/infra`
-Infrastructure components:
-- RNG implementations
-- RngSeed + hash-reseeding
-- Persistence abstractions
-- Domain ↔ DTO mappings
+
+Infrastructure utilities:
+
+- RNG implementations (`DeterministicRng`, system RNG).
+- `RngSeed` and hash-reseeding pipeline.
+- Mapping between domain objects and DTOs.
+- Persistence abstractions.
 
 ### `src/time_ctrl`
-Time management:
-- `TimeRules`, `TimeBank`, `ExtraTime`
-- `TurnClock`, timeouts
+
+Time control engine:
+
+- Time rules presets.
+- Timebank management.
+- Extra-time triggers.
+- Turn clock for soft/hard timeouts.
 
 ### `src/tournament`
-Tournament engine:
-- Lobby
-- Runtime
-- Balancing and rebalancing
+
+Tournament orchestration:
+
+- Lobby for tournament creation and player registration.
+- Runtime for driving tournament progress.
+- Balancing and rebalancing between tables.
 
 ### `src/api`
-Public API layer:
-- Commands
-- Queries
-- DTOs
-- API errors
+
+Public-facing API layer:
+
+- Commands (mutating operations).
+- Queries (read-only state access).
+- DTOs and error types.
 
 ---
 
-## Cloning & Setup
+## Getting Started
 
-Clone the repository:
+### Cloning & Setup
 
 ```bash
 git clone https://github.com/Rusickk1995/linera-poker.git
 cd linera-poker
 ````
 
-Check Rust installation:
+If the repository is private, GitHub access is required.
+
+### Requirements
+
+* **Rust** stable, recommended version `1.70+`
+* Cargo (bundled with Rust)
+* For Linera on-chain usage in a separate crate:
+
+  * target `wasm32-unknown-unknown`
+
+You can check your toolchain with:
 
 ```bash
 rustc --version
@@ -163,13 +198,13 @@ cargo --version
 
 ## Build
 
-Standard build:
+Standard debug build:
 
 ```bash
 cargo build
 ```
 
-Release build:
+Optimized release build:
 
 ```bash
 cargo build --release
@@ -179,34 +214,34 @@ cargo build --release
 
 ## Running Tests
 
-Full test suite:
+Run the full suite:
 
 ```bash
 cargo test
 ```
 
-Specific groups:
+Run specific test groups:
 
 ```bash
 # RNG
 cargo test rng_tests
 
-# Engine
+# Engine (actions, streets, showdown, side pots)
 cargo test engine_actions_tests
 cargo test engine_preflop_tests
 cargo test engine_showdown_tests
 cargo test engine_sidepots_tests
 
-# Tournament
+# Tournament logic (flow, balancing, blinds, time)
 cargo test tournament_logic_tests
 cargo test tournament_balancing_tests
 cargo test tournament_blinds_test
 cargo test tournament_time_tests
 
-# Integration
+# Integration (engine + tournament + RNG)
 cargo test engine_integration_tests
 
-# Stress
+# Stress (large simulations / tournaments)
 cargo test engine_stress_tests -- --nocapture
 ```
 
@@ -214,11 +249,11 @@ cargo test engine_stress_tests -- --nocapture
 
 ## Usage Examples
 
-Below are practical examples of how to use the engine.
+Below are high-level examples of how to embed the engine into your own code.
 
----
+> Note: actual type names or module paths may evolve – refer to the latest source as the single source of truth.
 
-### 1. Single-table hand example
+### Single-Table Hand Example
 
 ```rust
 use poker_engine::domain::chips::Chips;
@@ -231,7 +266,7 @@ use poker_engine::infra::rng::DeterministicRng;
 use poker_engine::infra::rng_seed::RngSeed;
 
 fn play_single_hand_example() {
-    // 1. Stakes
+    // 1. Configure table stakes
     let stakes = TableStakes {
         small_blind: Chips::from_u64(50),
         big_blind: Chips::from_u64(100),
@@ -247,27 +282,31 @@ fn play_single_hand_example() {
 
     let mut table = Table::new(config);
 
-    // Seat players (example)
-    // table.seat_player(...);
+    // Seat players (example, real implementation depends on your app)
+    // table.seat_player(player_id_1, initial_stack_1, seat_index_1)?;
+    // table.seat_player(player_id_2, initial_stack_2, seat_index_2)?;
+    // ...
 
-    // 2. Deterministic RNG
-    let seed = RngSeed::from_u64(123456789);
+    // 2. Prepare deterministic RNG
+    let seed = RngSeed::from_u64(123_456_789);
     let rng = DeterministicRng::from_seed(seed);
 
-    // 3. Start hand
-    let mut engine: HandEngine = start_hand(&mut table, rng).expect("start hand");
+    // 3. Start a new hand
+    let mut engine: HandEngine = start_hand(&mut table, rng).expect("failed to start hand");
 
-    // 4. Example action: Call
-    // apply_action(&mut engine, PlayerAction::new(player_id, PlayerActionKind::Call)).unwrap();
+    // 4. Apply some actions
+    // let action = PlayerAction::new(player_id_1, PlayerActionKind::Call);
+    // apply_action(&mut engine, action).expect("invalid action");
 
-    // 5. Advance state
+    // 5. Advance the engine (street transitions, showdown, etc.)
     let status = advance_if_needed(&mut engine);
 
     match status {
         HandStatus::Ongoing => {
-            // Waiting for next actions
+            // Hand is still in progress: await more actions from players
         }
         HandStatus::Finished(summary, history) => {
+            // Distribute pots, update stacks, persist and/or broadcast hand history
             println!("Hand finished: {:?}", summary);
             println!("Events: {:?}", history.events());
         }
@@ -277,115 +316,161 @@ fn play_single_hand_example() {
 
 ---
 
-### 2. Tournament / MTT Example (Conceptual)
+### Tournament / MTT Example (Conceptual)
 
 ```rust
 use poker_engine::tournament::lobby::TournamentLobby;
 use poker_engine::tournament::runtime::TournamentRuntime;
-use poker_engine::infra::rng::{DeterministicRng};
+use poker_engine::infra::rng::DeterministicRng;
 use poker_engine::infra::rng_seed::RngSeed;
 
 fn simulate_tournament() {
     let seed = RngSeed::from_u64(42);
     let rng = DeterministicRng::from_seed(seed);
 
-    // 1. Create lobby & tournament
+    // 1. Create lobby and tournament
     let mut lobby = TournamentLobby::new();
-    let tournament_id = lobby.create_tournament(/* config */);
+    let tournament_id = lobby.create_tournament(/* tournament config */);
 
     // 2. Register players
-    // lobby.register_player(tournament_id, player_id)?;
+    // for player_id in players {
+    //     lobby.register_player(tournament_id, player_id).expect("registration failed");
+    // }
 
     // 3. Create runtime
     let mut runtime = TournamentRuntime::new(lobby, rng);
 
-    // 4. Progress by ticks
+    // 4. Drive the tournament by ticks
     // while !runtime.is_finished(tournament_id) {
-    //     runtime.tick(tournament_id).unwrap();
+    //     runtime.tick(tournament_id).expect("runtime step failed");
     // }
 
-    // 5. Inspect results
+    // 5. Inspect final results
     // let result = runtime.tournament_result(tournament_id);
+    // println!("Tournament result: {:?}", result);
 }
 ```
+
+This pattern can be used for:
+
+* local Monte-Carlo simulations,
+* backend tournament orchestration,
+* deterministic on-chain or hybrid tournament flows.
 
 ---
 
 ## Deterministic RNG & Fairness
 
-The engine follows strict determinism:
+The engine is built around deterministic randomness suitable for blockchain and audit scenarios.
 
-```
+A typical reseeding scheme for each new hand:
+
+```text
 new_seed = H(prev_seed || table_id || hand_id || hand_index || ...)
 ```
 
-This approach enables:
+Where `H` is a secure hash function.
+
+This design provides:
 
 * reproducible tournaments,
 * verifiable fairness,
-* on-chain compatibility,
-* full audit replay.
+* consistent behavior across environments,
+* easy replay for dispute resolution.
 
-No global randomness is ever used.
+No global mutable RNG is ever used inside the engine.
 
 ---
 
 ## Timebank & Time Control
 
-The module `time_ctrl` implements:
+The `time_ctrl` module offers a complete time management system:
 
-* Base time per decision
-* Timebank accumulation & spending
-* Extra-time grants
-* Soft timeout (auto-check / auto-fold)
-* Hard timeout (forced fold / elimination)
-* `TurnClock` for evaluating current time state
+* Base time per decision.
+* Timebank accumulation and consumption.
+* Extra-time grants for critical spots.
+* Soft timeouts (e.g. auto-check / auto-fold).
+* Hard timeouts (forced fold, seat removal).
+* `TurnClock` abstraction to evaluate current state for each player.
 
-A complete system suitable for professional poker clients and real-time blockchain games.
+This can be wired into:
+
+* backend logic (enforcement),
+* frontend UI timers,
+* on-chain constraints at the service layer.
 
 ---
 
 ## Tournaments & Multi-Table
 
-The engine supports large-scale tournament workflows:
+The tournament engine is designed for **multi-table MTT** scenarios:
 
-* Player registration
-* Initial seat allocation
-* Blind progression
-* Table balancing and rebalancing
-* Multi-table orchestration
-* Deterministic simulations (stress testing)
+* Player registration and seeding.
+* Initial seat allocation across multiple tables.
+* Blind level progression.
+* Automatic balancing and rebalancing to keep tables even.
+* Integration with the hand engine at each table.
 
-Used for both backend infrastructure and potential on-chain implementations.
+You can:
+
+* simulate thousands of tournaments locally,
+* run them off-chain with deterministic RNG,
+* or map the same flow onto Linera.
 
 ---
 
 ## Linera Integration
 
-This engine is designed **specifically** with Linera in mind:
+The engine is built with **Linera** in mind:
 
-* deterministic state machine,
-* clean side-effect-free logic,
-* ABI-compatible types,
-* easy integration via a dedicated on-chain crate (`poker-onchain`),
-* suitable for GraphQL services & UI frontends.
+* deterministic, side-effect-free logic,
+* separation between core engine and on-chain binding,
+* ABI-friendly data structures for contract and service layers.
 
-Architecture:
+Typical architecture:
 
-* This repository → **off-chain core engine**
-* `poker-onchain` → wasm contract & service built on top of this engine
-* Frontend (Strix Poker UI) → communicates via Linera GraphQL or backend wrapper
+* This repository: **core engine crate**.
+* Separate `poker-onchain` crate: Linera contract + service using this engine and `linera-sdk`.
+* Frontend (e.g. Strix Poker UI): communicates via Linera GraphQL / RPC or a backend wrapper.
+
+This separation allows shared logic across:
+
+* local development,
+* off-chain infrastructure,
+* on-chain deployments.
 
 ---
 
 ## Roadmap
 
-* 6-9 Hold’em / mixed variants
-* Progressive bounty / PKO formats
-* Commit–reveal RNG / multi-party randomness
-* Performance optimizations
-* Full documentation & cookbook
+Planned / potential future work:
+
+* Additional variants: Omaha, 6+ Hold’em, mixed games.
+* Advanced tournament formats: bounty / PKO / progressive payouts.
+* Commit–reveal and multi-party RNG schemes.
+* Performance tuning and profiling.
+* Extended documentation and examples (cookbook-style).
+
+---
+
+## Project Status
+
+* Scope: **private / internal**.
+* Direction: active development, architecture already aligned with Web3 / Linera needs.
+* API: may change as integration with frontends and on-chain logic evolves.
+
+Contributions can be coordinated internally (branches, PRs, code review, CI).
 
 ---
 
 ## License
+
+This repository is currently **closed-source**.
+
+* Default: **All rights reserved**.
+
+If the project is later open-sourced, a `LICENSE` file (e.g. MIT / Apache-2.0) should be added and this section updated accordingly.
+
+```
+::contentReference[oaicite:0]{index=0}
+```
