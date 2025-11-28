@@ -134,8 +134,20 @@ fn post_blinds_and_antes(table: &mut Table, engine: &mut HandEngine, dealer_seat
         return;
     }
 
-    let sb_seat = occupied[1 % occupied.len()];
-    let bb_seat = occupied[2 % occupied.len()];
+    // Назначаем SB/BB с учётом хэдз-апа:
+    // - при 2 игроках: дилер всегда small blind, второй игрок big blind;
+    // - при 3+ игроках: классическая схема SB и BB после дилера.
+    let (sb_seat, bb_seat) = if occupied.len() == 2 {
+        // Хэдз-ап: дилер = SB, второй игрок = BB.
+        let dealer_idx = occupied
+            .iter()
+            .position(|&s| s == dealer_seat)
+            .expect("dealer_seat должен быть среди занятых мест");
+        let bb_index = (dealer_idx + 1) % occupied.len();
+        (dealer_seat, occupied[bb_index])
+    } else {
+        (occupied[1 % occupied.len()], occupied[2 % occupied.len()])
+    };
 
     let mut ante_events = Vec::new();
 

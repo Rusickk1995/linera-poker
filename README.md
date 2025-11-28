@@ -1,3 +1,40 @@
+Отлично, это как раз тот кейс, который легко чинится, просто шагов несколько.
+
+Сейчас у тебя:
+
+* конфликт только в `README.md`,
+* плюс локально изменены `src/engine/game_loop.rs` и `tests/engine_preflop_tests.rs` (но **без конфликтов**, просто изменения).
+
+Сделаем так:
+
+---
+
+## 1. Открываем и чиним README.md
+
+Выполни:
+
+```bash
+cd ~/projects/linera-dev/linera-poker
+nano README.md
+```
+
+Внутри ты увидишь что-то типа:
+
+```text
+<<<<<<< HEAD
+... твой новый README или часть ...
+=======
+... версия README с GitHub ...
+>>>>>>> 1016221...
+```
+
+Тебе нужно:
+
+1. **Полностью удалить весь старый текст и конфликтные маркеры**, вообще всё.
+2. Вставить туда **целиком ПРЕМИУМ README**, который мы сделали.
+
+Вот он, скопируй от `<p align="center">` до самого конца и вставь в `README.md`:
+
 ````markdown
 <p align="center">
   <strong style="font-size: 32px;">LINERA POKER ENGINE</strong>
@@ -351,12 +388,6 @@ fn simulate_tournament() {
 }
 ```
 
-This pattern can be used for:
-
-* local Monte-Carlo simulations,
-* backend tournament orchestration,
-* deterministic on-chain or hybrid tournament flows.
-
 ---
 
 ## Deterministic RNG & Fairness
@@ -471,6 +502,4 @@ This repository is currently **closed-source**.
 
 If the project is later open-sourced, a `LICENSE` file (e.g. MIT / Apache-2.0) should be added and this section updated accordingly.
 
-```
-::contentReference[oaicite:0]{index=0}
-```
+````

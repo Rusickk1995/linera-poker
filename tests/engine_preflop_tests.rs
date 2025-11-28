@@ -340,3 +340,122 @@ fn full_hand_flop_turn_river_board_and_order() {
         }
     }
 }
+
+/// =============================
+/// EDGE-CASE 1: чистый Heads-Up
+/// =============================
+/// В хэдз-апе дилер обязан быть small blind,
+/// второй игрок – big blind.
+#[test]
+fn heads_up_button_is_small_blind_and_second_player_is_big_blind() {
+    // Делаем стол на 2 игрока, без анте.
+    let mut table = make_test_table(2, AnteType::None);
+
+    let mut rng = DeterministicRng::from_u64(12345);
+    let hand_id: HandId = 1;
+
+    let _engine = start_hand(&mut table, &mut rng, hand_id)
+        .expect("start_hand must succeed");
+
+    // Кнопка дилера.
+    let button = table
+        .dealer_button
+        .expect("dealer_button должен быть установлен");
+
+    let sb_amount = table.config.stakes.small_blind;
+    let bb_amount = table.config.stakes.big_blind;
+
+    let sb_seat = find_seat_with_current_bet(&table, sb_amount)
+        .expect("в хэдз-апе должен быть найден SB");
+    let bb_seat = find_seat_with_current_bet(&table, bb_amount)
+        .expect("в хэдз-апе должен быть найден BB");
+
+    // В heads-up:
+    // - дилер = small blind,
+    // - второй игрок = big blind.
+    assert_eq!(
+        button, sb_seat,
+        "в хэдз-апе дилер обязан быть small blind"
+    );
+    assert_ne!(
+        sb_seat, bb_seat,
+        "SB и BB должны быть разными местами"
+    );
+}
+
+/// ======================================================================
+/// EDGE-CASE 2: переход 3-max -> Heads-Up, когда вылетает small blind
+/// ======================================================================
+/// Сценарий:
+/// 1) Стол из 3 игроков, стандартные дилер/SB/BB.
+/// 2) Выбивает именно SB (seat очищается).
+/// 3) Следующая раздача: остаётся 2 игрока, и должен включиться heads-up
+///    режим — дилер становится SB, второй игрок — BB.
+#[test]
+fn three_max_to_heads_up_when_small_blind_busts() {
+    // Стартуем 3-max стол без анте.
+    let mut table = make_test_table(3, AnteType::None);
+
+    let mut rng = DeterministicRng::from_u64(777);
+    let first_hand_id: HandId = 1;
+
+    // Первая раздача при 3 игроках.
+    let _engine = start_hand(&mut table, &mut rng, first_hand_id)
+        .expect("первая раздача должна стартовать");
+
+    let button1 = table
+        .dealer_button
+        .expect("после первой раздачи должна быть кнопка дилера");
+
+    let sb_amount = table.config.stakes.small_blind;
+    let bb_amount = table.config.stakes.big_blind;
+
+    let sb1 = find_seat_with_current_bet(&table, sb_amount)
+        .expect("в первой раздаче должен быть SB");
+    let bb1 = find_seat_with_current_bet(&table, bb_amount)
+        .expect("в первой раздаче должен быть BB");
+
+    // В 3-max:
+    // - дилер, SB и BB – три различных места.
+    assert_ne!(button1, sb1, "в 3-max дилер не совпадает с SB");
+    assert_ne!(button1, bb1, "в 3-max дилер не совпадает с BB");
+    assert_ne!(sb1, bb1, "SB и BB не совпадают в 3-max");
+
+    // Эмулируем вылет small blind:
+    // - очищаем его seat;
+    // - финализируем текущую раздачу.
+    table.seats[sb1 as usize] = None;
+    table.hand_in_progress = false;
+    table.current_hand_id = None;
+
+    // Вторая раздача уже при 2 игроках (heads-up).
+    let second_hand_id: HandId = 2;
+    let _engine2 = start_hand(&mut table, &mut rng, second_hand_id)
+        .expect("вторая раздача должна стартовать после вылета SB");
+
+    let button2 = table
+        .dealer_button
+        .expect("во второй раздаче должна быть кнопка дилера");
+
+    let sb2 = find_seat_with_current_bet(&table, sb_amount)
+        .expect("во второй раздаче должен быть SB");
+    let bb2 = find_seat_with_current_bet(&table, bb_amount)
+        .expect("во второй раздаче должен быть BB");
+
+    // Сейчас за столом два игрока, и должна примениться heads-up логика:
+    assert_eq!(
+        button2, sb2,
+        "в heads-up дилер обязан быть SB"
+    );
+    assert_ne!(
+        sb2, bb2,
+        "SB и BB в heads-up должны быть разными игроками"
+    );
+
+    // Дополнительно убеждаемся, что новый BB != вылетевший SB из первой раздачи.
+    assert_ne!(
+        bb2, sb1,
+        "игрок, вылетевший как SB в первой раздаче, не может стать BB во второй"
+    );
+}
+
