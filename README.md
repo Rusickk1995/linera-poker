@@ -406,6 +406,3 @@ To open-source the project, a LICENSE file (MIT/Apache/etc.) should be added.
 ```
 
 ---
-
-If you want an **even more marketing-polished**, “Silicon-Valley-grade” README (like Polygon, Aptos, NEAR style), or a **luxury design version with banners & badges**, I can produce that too.
-```
