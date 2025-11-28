@@ -19,7 +19,7 @@ pub struct TournamentScheduleConfig {
     /// Если 0 – значит "старт по кнопке", без жёсткого расписания.
     pub scheduled_start_ts: u64,
 
-    /// Можно ли стартовать раньше, чем scheduled_start_ts,
+    /// Можно ли стартовать раньше, чем `scheduled_start_ts`,
     /// если набран минимум игроков.
     pub allow_start_earlier: bool,
 
@@ -55,6 +55,7 @@ impl TournamentScheduleConfig {
         }
     }
 }
+
 
 /// Настройки балансировки столов.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -502,7 +503,6 @@ impl Tournament {
         Ok(finishing_place)
     }
 
-
     /// Тиковое обновление по времени:
     ///
     ///   - обновляет уровень блайндов, если прошло достаточно минут;
@@ -602,9 +602,10 @@ impl Tournament {
 
     /// Рассадка игроков по столам при старте турнира (или полном пересборе).
     ///
-    /// Используется при начале турнира или при полном пересчёте рассадки.
-    /// Возвращает список:
-    ///   (table_id, [player_id, ...])
+    /// Гарантии:
+    /// - количество игроков за столом не превышает `table_size`;
+    /// - если `balancing.enabled = true`, то разница между самым полным и самым пустым
+    ///   столом не больше `balancing.max_seat_diff`.
     pub fn seat_players_evenly(
         &mut self,
         table_size: u8,
@@ -619,21 +620,88 @@ impl Tournament {
 
         active.sort_unstable();
 
+        let n = active.len();
         let mut result = Vec::new();
-        let ts = table_size.max(2) as usize;
-        if active.is_empty() {
+        if n == 0 {
             return result;
         }
 
+        let ts = table_size.max(2) as usize;
+
+        // Если балансировка выключена — просто чанкованием, но не больше table_size.
+        if !self.config.balancing.enabled {
+            let mut idx = 0usize;
+            while idx < n {
+                let end = (idx + ts).min(n);
+                let chunk = &active[idx..end];
+
+                let table_id = next_table_id;
+                let mut seated_ids = Vec::with_capacity(chunk.len());
+
+                for (seat, player_id) in chunk.iter().enumerate() {
+                    if let Some(reg) = self.registrations.get_mut(player_id) {
+                        reg.table_id = Some(table_id);
+                        reg.seat_index = Some(seat as SeatIndex);
+                    }
+                    seated_ids.push(*player_id);
+                }
+
+                result.push((table_id, seated_ids));
+                next_table_id += 1;
+                idx = end;
+            }
+
+            return result;
+        }
+
+        // ----- Балансируем с учётом max_seat_diff -----
+
+        let max_diff = self.config.balancing.max_seat_diff as usize;
+
+        // Минимальное количество столов при ограничении table_size.
+        let mut tables = (n + ts - 1) / ts;
+        if tables == 0 {
+            tables = 1;
+        }
+
+        // Подбираем такое количество столов, чтобы:
+        //  - max_count <= table_size
+        //  - max_count - min_count <= max_seat_diff
+        loop {
+            let base = n / tables;
+            let extra = n % tables; // первые `extra` столов получают по (base+1)
+
+            let min_count = base;
+            let max_count = base + if extra > 0 { 1 } else { 0 };
+
+            if max_count <= ts && max_count.saturating_sub(min_count) <= max_diff {
+                break;
+            }
+
+            tables += 1;
+            if tables >= n {
+                // Дальше смысл теряется (по одному за стол), выходим.
+                break;
+            }
+        }
+
+        let base = n / tables;
+        let extra = n % tables;
+
         let mut idx = 0usize;
-        while idx < active.len() {
-            let end = (idx + ts).min(active.len());
-            let chunk = &active[idx..end];
+        for t_idx in 0..tables {
+            let take = base + if t_idx < extra { 1 } else { 0 };
+            if take == 0 {
+                continue;
+            }
+
+            let end = (idx + take).min(n);
+            let slice = &active[idx..end];
 
             let table_id = next_table_id;
-            let mut seated_ids = Vec::with_capacity(chunk.len());
+            let mut seated_ids = Vec::with_capacity(slice.len());
 
-            for (seat, player_id) in chunk.iter().enumerate() {
+            for (seat, player_id) in slice.iter().enumerate() {
                 if let Some(reg) = self.registrations.get_mut(player_id) {
                     reg.table_id = Some(table_id);
                     reg.seat_index = Some(seat as SeatIndex);
@@ -648,6 +716,7 @@ impl Tournament {
 
         result
     }
+
 
     /// Посчитать список перестановок игроков для ребаланса столов.
     ///
