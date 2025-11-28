@@ -1,35 +1,39 @@
 // src/time_ctrl/clock.rs
-//! Локальный таймер хода (shot clock) для текущего игрока.
+//! Turn clock (shot clock) для одного стола.
 
 use serde::{Deserialize, Serialize};
 
 use crate::domain::PlayerId;
 
-use super::{TimeBank, TimeRules};
+use super::{ExtraTimeGrant, TimeBank, TimeRules};
 
-/// Состояние таймера текущего хода.
+/// Состояние таймера после "протекания" времени.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TurnClock {
-    /// Какой игрок сейчас должен сделать ход (None, если сейчас нет активного хода).
-    pub current_player: Option<PlayerId>,
-    /// Сколько секунд базового времени ещё осталось на этот ход.
-    pub remaining_action_secs: i32,
-    /// Сколько секунд дополнительного времени (из банка) ещё осталось на этот ход.
-    pub remaining_extra_secs: i32,
+pub enum TimeoutState {
+    /// Сейчас нет активного игрока (ход не у кого).
+    NoActivePlayer,
+    /// Всё ещё в пределах допустимого времени.
+    Ongoing,
+    /// Было сожжено extra-time, но лимит ещё не исчерпан.
+    UsedExtraTime {
+        player_id: PlayerId,
+        used_secs: i32,
+    },
+    /// Время полностью вышло — требуется авто-действие (check/fold).
+    TimedOut {
+        player_id: PlayerId,
+    },
 }
 
-/// Результат "протекания" времени.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum TimeoutState {
-    /// Время ещё не вышло, игрок может думать дальше.
-    Ongoing,
-    /// Был подключён таймбанк (выдали extra-time), но игрок ещё не вылетел по времени.
-    UsedExtraTime { granted_secs: i32 },
-    /// Базовое время и таймбанк для этого игрока полностью исчерпаны —
-    /// надо авто-Check/авто-Fold.
-    TimedOut,
-    /// Сейчас нет активного игрока, на кого вешать таймер.
-    NoActivePlayer,
+/// Внутренний turn-clock для одного стола.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TurnClock {
+    /// Текущий игрок, который должен принять решение.
+    pub current_player: Option<PlayerId>,
+    /// Оставшееся базовое время на ход (секунды).
+    pub remaining_action_secs: i32,
+    /// Оставшееся extra-time на этот ход (секунды).
+    pub remaining_extra_secs: i32,
 }
 
 impl TurnClock {
@@ -41,78 +45,132 @@ impl TurnClock {
         }
     }
 
-    /// Начать ход нового игрока согласно правилам.
-    pub fn start_turn(&mut self, player_id: PlayerId, rules: &TimeRules) {
-        self.current_player = Some(player_id);
-        self.remaining_action_secs = rules.base_action_secs as i32;
-        self.remaining_extra_secs = 0;
-    }
-
-    /// Очистить состояние таймера (например, после того, как игрок сделал действие).
+    /// Сбросить текущий ход (например, после завершения раздачи).
     pub fn clear(&mut self) {
         self.current_player = None;
         self.remaining_action_secs = 0;
         self.remaining_extra_secs = 0;
     }
 
-    /// Симулируем протекание `delta_secs` времени для текущего игрока.
+    /// Начинается ход игрока.
     ///
-    /// Логика:
-    /// - сначала тратим base-время;
-    /// - когда оно ушло, пытаемся подключить extra-time из таймбанка (кусок bank_step_secs);
-    /// - если таймбанк тоже исчерпан и ещё остался `delta` — считаем, что игрок вылетел по времени.
+    /// - базовое время берётся из `rules.base_action_secs`;
+    /// - сразу выдаём один "пакет" extra-time из таймбанка (bank_step_secs);
+    /// - возвращаем `ExtraTimeGrant`, чтобы фронт мог показать анимацию / индикатор.
+    pub fn start_turn(
+        &mut self,
+        player_id: PlayerId,
+        rules: &TimeRules,
+        bank: &mut TimeBank,
+    ) -> ExtraTimeGrant {
+        self.current_player = Some(player_id);
+        self.remaining_action_secs = rules.base_action_secs.max(0);
+
+        let step = rules.bank_step_secs.max(0);
+        let granted = if step > 0 {
+            bank.grant_for_turn(player_id, step)
+        } else {
+            0
+        };
+
+        self.remaining_extra_secs = granted;
+
+        if granted > 0 {
+            ExtraTimeGrant::new(granted)
+        } else {
+            ExtraTimeGrant::none()
+        }
+    }
+
+    /// Сообщить часам, что прошло `delta_secs` секунд.
+    ///
+    /// Возвращает:
+    /// - `Ongoing`, если время ещё есть;
+    /// - `UsedExtraTime`, если сгорела часть extra-time;
+    /// - `TimedOut`, если вообще всё время вышло.
     pub fn elapse_for_current(
         &mut self,
         delta_secs: i32,
         rules: &TimeRules,
         bank: &mut TimeBank,
     ) -> TimeoutState {
-        if delta_secs <= 0 {
-            return TimeoutState::Ongoing;
-        }
-
         let player_id = match self.current_player {
             Some(pid) => pid,
             None => return TimeoutState::NoActivePlayer,
         };
 
-        let mut remaining = delta_secs;
-
-        // 1. Тратим оставшееся базовое время
-        if self.remaining_action_secs > 0 {
-            if remaining < self.remaining_action_secs {
-                self.remaining_action_secs -= remaining;
-                return TimeoutState::Ongoing;
-            } else {
-                remaining -= self.remaining_action_secs;
-                self.remaining_action_secs = 0;
-            }
+        if delta_secs <= 0 {
+            return TimeoutState::Ongoing;
         }
 
-        // 2. Если базовое время закончилось, но ещё не подключали extra,
-        //    пробуем выдать "шаг" из таймбанка.
-        if self.remaining_extra_secs <= 0 {
-            let granted = bank.grant_from_bank(player_id, rules.bank_step_secs as i32);
-            if granted > 0 {
-                self.remaining_extra_secs = granted;
-                // Если overflow от base-времени был 0 — просто сообщаем, что подключили extra.
-                if remaining == 0 {
-                    return TimeoutState::UsedExtraTime { granted_secs: granted };
+        let mut remaining = delta_secs;
+        let mut used_extra: i32 = 0;
+
+        // 1) Жжём базовое время на ход.
+        if self.remaining_action_secs > 0 {
+            let burn = remaining.min(self.remaining_action_secs);
+            self.remaining_action_secs -= burn;
+            remaining -= burn;
+        }
+
+        if remaining <= 0 {
+            return TimeoutState::Ongoing;
+        }
+
+        // 2) Жжём уже выданное extra-time.
+        if self.remaining_extra_secs > 0 {
+            let burn = remaining.min(self.remaining_extra_secs);
+            self.remaining_extra_secs -= burn;
+            used_extra += burn;
+            remaining -= burn;
+        }
+
+        if remaining <= 0 {
+            return if used_extra > 0 {
+                TimeoutState::UsedExtraTime {
+                    player_id,
+                    used_secs: used_extra,
                 }
             } else {
-                // Таймбанк нулевой и base-время уже 0 — любая дополнительная секунда = таймаут.
-                return TimeoutState::TimedOut;
+                TimeoutState::Ongoing
+            };
+        }
+
+        // 3) Если всё ещё не хватило — пробуем подтянуть ещё пакеты из таймбанка.
+        while remaining > 0 {
+            let step = rules.bank_step_secs;
+            if step <= 0 {
+                break;
+            }
+
+            let granted = bank.grant_for_turn(player_id, step);
+            if granted <= 0 {
+                break;
+            }
+
+            let burn = remaining.min(granted);
+            used_extra += burn;
+            remaining -= burn;
+
+            if burn < granted {
+                // Часть extra-time ещё осталась на этот ход.
+                self.remaining_extra_secs = granted - burn;
+                break;
             }
         }
 
-        // 3. Тратим extra-time
-        if remaining < self.remaining_extra_secs {
-            self.remaining_extra_secs -= remaining;
-            TimeoutState::Ongoing
-        } else {
-            // Доп. время тоже проели.
+        if remaining > 0 {
+            // Время кончилось полностью.
+            self.remaining_action_secs = 0;
             self.remaining_extra_secs = 0;
-            TimeoutState::TimedOut
+            TimeoutState::TimedOut { player_id }
+        } else if used_extra > 0 {
+            TimeoutState::UsedExtraTime {
+                player_id,
+                used_secs: used_extra,
+            }
+        } else {
+            TimeoutState::Ongoing
         }
     }
 }

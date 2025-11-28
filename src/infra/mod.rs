@@ -8,8 +8,10 @@ pub mod ids;
 pub mod mapping;
 pub mod persistence;
 pub mod rng;
+pub mod rng_seed;
 
 pub use ids::*;
 pub use mapping::*;
 pub use persistence::*;
 pub use rng::*;
+pub use rng_seed::RngSeed;

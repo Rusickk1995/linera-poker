@@ -1,45 +1,47 @@
 // src/time_ctrl/time_bank.rs
-//! Time bank игроков (общий запас доп. времени на турнир/сессию).
+//! Таймбанк игроков: сколько секунд дополнительного времени у кого осталось.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::domain::PlayerId;
+use super::TimeRules;
 
-/// Состояние таймбанка конкретного игрока.
+/// Таймбанк одного игрока (секунды).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlayerTimeBank {
-    /// Сколько секунд банка ещё осталось (может стать 0, но не должно быть < 0).
     pub remaining_secs: i32,
 }
 
 impl PlayerTimeBank {
     pub fn new(initial_secs: i32) -> Self {
         Self {
-            remaining_secs: initial_secs,
+            remaining_secs: initial_secs.max(0),
         }
     }
 
-    /// Сколько осталось.
-    pub fn remaining(&self) -> i32 {
-        self.remaining_secs
-    }
-
-    /// Снять `requested` секунд из банка (если столько нет — отдаём сколько есть).
-    /// Возвращаем реально выданное количество секунд (0, если банка больше нет).
-    pub fn take(&mut self, requested: i32) -> i32 {
-        if self.remaining_secs <= 0 || requested <= 0 {
+    /// Выдать `requested` секунд из таймбанка.
+    /// Возвращает фактически выданное (может быть меньше, если банк пустеет).
+    pub fn grant(&mut self, requested: i32) -> i32 {
+        if requested <= 0 || self.remaining_secs <= 0 {
             return 0;
         }
-
-        let grant = self.remaining_secs.min(requested);
+        let grant = requested.min(self.remaining_secs);
         self.remaining_secs -= grant;
         grant
     }
+
+    /// Добавить секунды в банк (для бонусов, промо и т.п.).
+    pub fn add(&mut self, secs: i32) {
+        if secs <= 0 {
+            return;
+        }
+        self.remaining_secs = self.remaining_secs.saturating_add(secs);
+    }
 }
 
-/// Общий time bank для всех игроков стола/турнира.
+/// Глобальный таймбанк турнира / стола.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TimeBank {
     players: HashMap<PlayerId, PlayerTimeBank>,
@@ -52,41 +54,52 @@ impl TimeBank {
         }
     }
 
-    /// Инициализировать/переинициализировать банк для заданного игрока.
-    pub fn set_for_player(&mut self, player_id: PlayerId, initial_secs: i32) {
-        self.players
-            .insert(player_id, PlayerTimeBank::new(initial_secs));
+    /// Полностью очистить таймбанк (например, новый турнир).
+    pub fn reset(&mut self) {
+        self.players.clear();
     }
 
-    /// Инициализировать банк для множества игроков.
-    pub fn init_for_players<I>(&mut self, players: I, initial_secs: i32)
+    /// Инициализировать таймбанк для набора игроков.
+    pub fn init_for_players<I>(&mut self, rules: &TimeRules, players: I)
     where
         I: IntoIterator<Item = PlayerId>,
     {
+        let initial = rules.bank_per_player_secs.max(0);
         for pid in players {
-            self.set_for_player(pid, initial_secs);
+            self.players
+                .entry(pid)
+                .or_insert_with(|| PlayerTimeBank::new(initial));
         }
     }
 
-    /// Сколько секунд ещё есть у игрока.
-    pub fn remaining_for(&self, player_id: PlayerId) -> i32 {
+    /// Добавить игроку времени в банк.
+    pub fn add_time(&mut self, player_id: PlayerId, secs: i32) {
+        if secs <= 0 {
+            return;
+        }
         self.players
-            .get(&player_id)
-            .map(|p| p.remaining())
-            .unwrap_or(0)
+            .entry(player_id)
+            .or_insert_with(|| PlayerTimeBank::new(0))
+            .add(secs);
     }
 
-    /// Выдать игроку до `requested` секунд из таймбанка.
-    /// Если банка нет — вернётся 0.
-    pub fn grant_from_bank(&mut self, player_id: PlayerId, requested: i32) -> i32 {
+    /// Выдать `requested` секунд extra-time для текущего хода игрока.
+    pub fn grant_for_turn(&mut self, player_id: PlayerId, requested: i32) -> i32 {
         if requested <= 0 {
             return 0;
         }
-
-        if let Some(p) = self.players.get_mut(&player_id) {
-            p.take(requested)
+        if let Some(bank) = self.players.get_mut(&player_id) {
+            bank.grant(requested)
         } else {
             0
         }
+    }
+
+    /// Остаток таймбанка у игрока (для отображения на фронте).
+    pub fn remaining_for(&self, player_id: PlayerId) -> i32 {
+        self.players
+            .get(&player_id)
+            .map(|b| b.remaining_secs)
+            .unwrap_or(0)
     }
 }
