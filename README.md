@@ -395,8 +395,3 @@ Architecture:
 ---
 
 ## License
-
-This repository is private.
-All rights reserved.
-
-To open-source the project, a LICENSE file (MIT/Apache/etc.) should be added.
