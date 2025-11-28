@@ -348,3 +348,117 @@ High-level API surface for external callers:
     ├── tournament_blinds_test.rs
     ├── tournament_logic_tests.rs
     └── tournament_time_tests.rs
+
+
+
+
+
+# Build library
+cargo build
+
+# Build in release mode
+cargo build --release
+
+
+# All tests (unit + integration + stress)
+cargo test
+
+
+
+# RNG
+cargo test rng_tests
+
+# RNG determinism and safety
+cargo test rng_tests
+
+# Engine unit tests (actions, betting, showdown, side pots)
+cargo test engine_actions_tests
+cargo test engine_preflop_tests
+cargo test engine_showdown_tests
+cargo test engine_sidepots_tests
+
+# Tournament logic and balancing
+cargo test tournament_logic_tests
+cargo test tournament_balancing_tests
+cargo test tournament_blinds_test
+cargo test tournament_time_tests
+
+# Full integration tests (engine + tournament + RNG)
+cargo test engine_integration_tests
+
+# Stress tests (large tournaments / many hands)
+cargo test engine_stress_tests -- --nocapture
+
+
+
+Using the Engine in Your Code
+
+Add this crate as a dependency in your workspace or reference it directly (for example from poker-onchain or a backend service).
+
+Basic example: start a hand and process actions on a single table:
+
+
+
+use poker_engine::domain::table::{Table, TableConfig, TableType, TableStakes};
+use poker_engine::domain::chips::Chips;
+use poker_engine::domain::player::PlayerAtTable;
+use poker_engine::engine::{
+    start_hand, apply_action, advance_if_needed,
+    HandEngine, HandStatus, PlayerAction, PlayerActionKind, RandomSource,
+};
+use poker_engine::infra::rng::{DeterministicRng};
+use poker_engine::infra::rng_seed::RngSeed;
+
+// Implement RandomSource using DeterministicRng:
+struct EngineRng(DeterministicRng);
+
+impl RandomSource for EngineRng {
+    fn shuffle<T>(&mut self, slice: &mut [T]) {
+        self.0.shuffle(slice);
+    }
+}
+
+fn play_simple_hand() {
+    // 1. Configure table
+    let stakes = TableStakes {
+        small_blind: Chips::from_u64(50),
+        big_blind: Chips::from_u64(100),
+        ante: Chips::zero(),
+        // ...
+    };
+
+    let config = TableConfig {
+        max_seats: 9,
+        table_type: TableType::Cash,
+        stakes,
+        allow_straddle: false,
+        // ...
+    };
+
+    let mut table = Table::new(config);
+
+    // 2. Seat players (example; real code should use proper PlayerId, stacks, etc.)
+    // table.seat_player(...);
+
+    // 3. Prepare RNG
+    let seed = RngSeed::from_u64(123456789);
+    let rng = EngineRng(DeterministicRng::from_seed(seed));
+
+    // 4. Start hand
+    let mut engine: HandEngine = start_hand(&mut table, rng).expect("start hand");
+
+    // 5. Apply actions in a loop (Fold/Call/Raise/... from PlayerAction)
+    // apply_action(&mut engine, PlayerAction::new(player_id, PlayerActionKind::Call, ...))?;
+
+    // 6. Automatically advance streets and finish hand when done
+    let status = advance_if_needed(&mut engine);
+    match status {
+        HandStatus::Ongoing => {
+            // still waiting for more actions
+        }
+        HandStatus::Finished(summary, history) => {
+            // distribute pots, update player stacks, log history, etc.
+            println!("Hand finished: {:?}", summary);
+        }
+    }
+}
