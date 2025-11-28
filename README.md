@@ -1,9 +1,3 @@
-Understood.
-Below is the **full, clean, professional English README**, preserving your structure, tone, and “big company” style.
-This is the **final polished version**, ready to replace your repository’s README.md.
-
----
-
 # **README.md — Production-Grade**
 
 ````markdown
