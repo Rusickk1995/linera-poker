@@ -4,7 +4,7 @@ This is the **final polished version**, ready to replace your repository’s REA
 
 ---
 
-# **README.md — English Version (Production-Grade)**
+# **README.md — Production-Grade**
 
 ````markdown
 # Linera Poker Engine
