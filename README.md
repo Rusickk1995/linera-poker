@@ -374,7 +374,7 @@ Architecture:
 
 * This repository → **off-chain core engine**
 * `poker-onchain` → wasm contract & service built on top of this engine
-* Frontend (Strix Poker UI) → communicates via Linera GraphQL or backend wrapper
+* Frontend (Linera Poker UI) → communicates via Linera GraphQL or backend wrapper
 
 ---
 
