@@ -3,40 +3,21 @@ name = "poker-engine"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+# Движок — это обычная Rust-библиотека, НЕ WASM.
+# Только rlib достаточно.
+crate-type = ["rlib"]
+
 [dependencies]
-# Только то, что нужно обоим мирам (native + wasm)
-linera-sdk = { version = "0.15.6", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 blake3 = "1.5"
 sha2 = "0.10.9"
 
-# ⚠️ Эти зависят от rand / async-graphql → только для НЕ wasm32
+# rand используется ТОЛЬКО на native
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-async-graphql = { version = "7.0.17", default-features = false }
 rand = "0.8"
 
 [dev-dependencies]
-linera-sdk = { version = "0.15.6", features = ["test", "wasmer"] }
 tokio = { version = "1.40", features = ["rt", "sync"] }
-
-[profile.release]
-debug = true
-lto = true
-opt-level = "z"
-strip = "debuginfo"
-
-
-# [[bin]]
-# name = "poker_dev_cli"
-# path = "src/bin/poker_dev_cli.rs"
-
-# [[bin]]
-# name = "poker_dev_cli_single_table"
-# path = "src/bin/poker_dev_cli_single_table.rs"
-
-# [[bin]]
-# name = "poker_dev_cli_multitable"
-# path = "src/bin/poker_dev_cli_multitable.rs"
-
