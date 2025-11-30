@@ -73,6 +73,13 @@ pub enum TableCommand {
 
     /// Действие игрока в раздаче.
     PlayerAction(PlayerActionCommand),
+
+    /// Тик таймера стола (shot-clock / таймбанк).
+    ///
+    /// Вызывает on-chain обработку прошедшего времени:
+    /// - уменьшает оставшееся время текущего игрока;
+    /// - при таймауте инициирует авто-действие (fold).
+    TickTable(TickTableCommand),
 }
 
 /// Посадить игрока в конкретное место.
@@ -105,7 +112,7 @@ pub struct AdjustStackCommand {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StartHandCommand {
     pub table_id: TableId,
-    /// Идентификатор раздачи (можно генерить в state).
+    /// Идентификатор раздачи (можно игнорить on-chain, берём из state).
     pub hand_id: u64,
 }
 
@@ -114,6 +121,16 @@ pub struct StartHandCommand {
 pub struct PlayerActionCommand {
     pub table_id: TableId,
     pub action: PlayerAction,
+}
+
+/// Тик таймера для конкретного стола.
+///
+/// `delta_secs` — сколько секунд "протекло" с предыдущего вызова
+/// (по версии фронта/оркестратора), используется в `time_ctrl`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TickTableCommand {
+    pub table_id: TableId,
+    pub delta_secs: i32,
 }
 
 /// Турнирные команды верхнего уровня.
@@ -163,6 +180,8 @@ pub enum TournamentCommand {
 /// Команда на создание турнира.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateTournamentCommand {
+    /// Идентификатор турнира (для on-chain).
+    pub tournament_id: TournamentId,
     /// Полная конфигурация турнира (см. `domain::tournament::TournamentConfig`).
     pub config: TournamentConfig,
 }
@@ -190,9 +209,6 @@ pub struct StartTournamentCommand {
 }
 
 /// Перейти на следующий уровень блайндов.
-///
-/// Конкретный уровень определяется доменной логикой турнира
-/// (например, по расписанию уровней в `TournamentConfig`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AdvanceLevelCommand {
     pub tournament_id: TournamentId,
