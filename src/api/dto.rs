@@ -61,11 +61,12 @@ pub struct HandPlayerResultDto {
     pub rank: Option<HandRank>,
 }
 
-/// DTO турнира (минимальное представление для лобби).
+/// DTO турнира (минимальное представление для лобби/ончейна).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TournamentViewDto {
     pub tournament_id: TournamentId,
     pub name: String,
+    /// Статус в текстовом виде: "Registering", "Running", "Finished" и т.п.
     pub status: String,
     pub current_level: u32,
     pub players_registered: u32,
@@ -89,25 +90,41 @@ pub enum CommandResponse {
 
     /// Создан новый стол.
     TableCreated(TableViewDto),
+
+    /// Состояние турнира после турнирной команды.
+    TournamentState(TournamentViewDto),
 }
 
-/// Помощник: преобразование HandStatus движка в DTO (упрощённо).
+/// Помощник: преобразование HandStatus движка в DTO.
 pub fn map_hand_status_to_response(
     status: HandStatus,
     table_dto: TableViewDto,
 ) -> CommandResponse {
     match status {
         HandStatus::Ongoing => CommandResponse::TableState(table_dto),
+
         HandStatus::Finished(summary, _history) => {
+            // Быстрый индекс: PlayerId -> seat_index из актуального TableViewDto.
+            let mut seat_by_player: std::collections::HashMap<PlayerId, u8> =
+                std::collections::HashMap::new();
+
+            for p in &table_dto.players {
+                seat_by_player.insert(p.player_id, p.seat_index);
+            }
+
             let players = summary
                 .results
                 .into_iter()
-                .map(|r| HandPlayerResultDto {
-                    player_id: r.player_id,
-                    seat_index: 0, // seat можно подтянуть из state, когда будет готов
-                    net_chips: r.net_chips,
-                    is_winner: r.is_winner,
-                    rank: r.rank,
+                .map(|r| {
+                    let seat_index = seat_by_player.get(&r.player_id).copied().unwrap_or(255);
+
+                    HandPlayerResultDto {
+                        player_id: r.player_id,
+                        seat_index,
+                        net_chips: r.net_chips,
+                        is_winner: r.is_winner,
+                        rank: r.rank,
+                    }
                 })
                 .collect();
 

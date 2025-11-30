@@ -810,7 +810,7 @@ impl Tournament {
     /// - Если активных 0 → статус Finished, winner_id = None;
     /// - Если активный один → статус Finished, winner_id = Some(player),
     ///   ему ставим место 1 (если ещё не стоит).
-    fn check_and_finish_if_needed(&mut self) {
+    pub fn check_and_finish_if_needed(&mut self) {
         if self.status == TournamentStatus::Finished {
             return;
         }
