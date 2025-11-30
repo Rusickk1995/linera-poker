@@ -217,6 +217,73 @@ impl TournamentConfig {
 
         Ok(())
     }
+
+    /// Конструктор турнира из значений, которые приходят с фронта.
+    ///
+    /// Идея:
+    /// - фронт даёт уже посчитанный BlindStructure и расписание/балансировку;
+    /// - здесь мы аккуратно проставляем все поля TournamentConfig,
+    ///   а часть вещей (min_players_to_start, freezeout и т.п.) можем
+    ///   взять либо из аргументов, либо из разумных дефолтов.
+    pub fn from_frontend(
+        name: String,
+        description: Option<String>,
+        starting_stack: Chips,
+        max_players: u32,
+        table_size: u8,
+        blind_structure: BlindStructure,
+        schedule: TournamentScheduleConfig,
+        balancing: TableBalancingConfig,
+        // опциональные вещи, которые фронт может не задавать явно
+        min_players_to_start: Option<u32>,
+        freezeout: Option<bool>,
+        reentry_allowed: Option<bool>,
+        max_entries_per_player: Option<u32>,
+        late_reg_level: Option<u32>,
+        auto_approve: Option<bool>,
+    ) -> Self {
+        // --------- разумные дефолты ---------
+
+        // Минимум игроков для старта: по умолчанию размер стола.
+        let min_players_to_start =
+            min_players_to_start.unwrap_or(table_size as u32);
+
+        // Freezeout: по умолчанию true (классический турнир без реэнтри).
+        let freezeout = freezeout.unwrap_or(true);
+
+        // Разрешены ли реэнтри: если фронт не указал — привязываем к freezeout.
+        let reentry_allowed = reentry_allowed.unwrap_or(!freezeout);
+
+        // Макс. количество входов на игрока:
+        //  - для freezeout = 1;
+        //  - иначе, если не указали, пусть будет 3.
+        let max_entries_per_player = max_entries_per_player.unwrap_or_else(|| {
+            if freezeout { 1 } else { 3 }
+        });
+
+        // Late reg по уровню: если фронт не задаёт — считаем, что нет late reg.
+        let late_reg_level = late_reg_level.unwrap_or(0);
+
+        // Автоаппрув регистрации: по умолчанию включен.
+        let auto_approve = auto_approve.unwrap_or(true);
+
+        Self {
+            name,
+            description,
+            starting_stack,
+            max_players,
+            min_players_to_start,
+            table_size,
+            freezeout,
+            reentry_allowed,
+            max_entries_per_player,
+            late_reg_level,
+            blind_structure,
+            auto_approve,
+            schedule,
+            balancing,
+        }
+    }
 }
 
 /// Статус турнира.
